@@ -1,0 +1,58 @@
+version: '3.9'
+
+services:
+  bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    
+    container_name: aifaq-bot
+    
+    # Автоматический перезапуск при падениях и перезагрузке сервера
+    restart: always
+    
+    # Переменные окружения
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - TZ=Europe/Moscow  # Временная зона для логов
+    
+    # Монтирование файлов конфигурации и секретов
+    volumes:
+      # .env файл (обязателен, содержит TELEGRAM_BOT_TOKEN и YANDEX_FOLDER_ID)
+      - ./tenants/test_clinic/.env:/app/tenants/test_clinic/.env:ro
+      
+      # Service account key для Yandex Cloud (обязателен)
+      - ./sa-key.json:/app/sa-key.json:ro
+      
+      # База знаний (опционально, если нужно обновлять из хоста)
+      - ./tenants/test_clinic/knowledge.txt:/app/tenants/test_clinic/knowledge.txt:ro
+      
+      # Логи (опционально, для сохранения логов на хосте)
+      - ./logs:/app/logs
+    
+    # Лимиты ресурсов (опционально, настроить под ваш сервер)
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+    
+    # Логирование
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "service=aifaq-bot"
+    
+    # Сетевые настройки
+    networks:
+      - aifaq-network
+
+networks:
+  aifaq-network:
+    driver: bridge

@@ -1,53 +1,27 @@
-# ============================================================================
-# Multi-stage build для оптимизации размера образа
-# ============================================================================
+FROM python:3.12-slim AS builder
 
-FROM python:3.12-slim as builder
+WORKDIR /app
 
-WORKDIR /build
-
-# Установим зависимости для build
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    libssl-dev \
-    libffi-dev \
-    && rm -rf /var/lib/apt/lists/*
-
-# Копируем requirements и устанавливаем зависимости в виртуальное окружение
-COPY requirements.txt .
-RUN pip install --user --no-cache-dir -r requirements.txt
-
-# ============================================================================
-# Production stage
-# ============================================================================
+# Прописываем только requirements и ставим пакеты в префикс /install
+# Используем только бинарные колёса, чтобы избежать локальной компиляции
+COPY requirements.txt /app/requirements.txt
+RUN python -m pip install --upgrade pip \
+ && python -m pip install --no-cache-dir --prefix=/install --only-binary=:all: -r /app/requirements.txt
 
 FROM python:3.12-slim
 
 WORKDIR /app
 
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
 
-# Установим runtime зависимости
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Копируем установленные в builder пакеты в /usr/local (Python их найдёт автоматически)
+COPY --from=builder /install /usr/local
 
-# Создаём непривилегированного пользователя для безопасности
-RUN groupadd -r appuser && useradd -r -g appuser appuser
+# Копируем код приложения
+COPY . /app
 
-# Копируем установленные пакеты из builder stage
-COPY --from=builder /root/.local /home/appuser/.local
+# Убедимся, что бинарники из /usr/local/bin доступны в PATH
+ENV PATH="/usr/local/bin:${PATH}"
 
-# Копируем код приложения (не копируем .env и sa-key.json — монтируйте их в контейнере как volumes)
-COPY --chown=appuser:appuser . .
-
-# Устанавливаем PATH для пользователя
-ENV PATH=/home/appuser/.local/bin:$PATH \
-    PYTHONPATH=/app
-
-# Переходим на непривилегированного пользователя
-USER appuser
-
-# Запускаем приложение
+# Команда запуска
 CMD ["python", "main.py"]

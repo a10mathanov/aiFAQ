@@ -103,9 +103,10 @@ class Settings(BaseSettings):
     }
 
     class Config:
-        env_file = str(Path(__file__).resolve().parent / ".env")
-        env_file_encoding = 'utf-8'
+        env_file = ".env"  # Просто строка, без Path и привязки к папке скрипта
+        env_file_encoding = "utf-8"
         case_sensitive = False
+        extra = "ignore"
 
 
 # Проверка наличия файла .env в папке tenants/test_clinic

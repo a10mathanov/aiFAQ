@@ -3,6 +3,6 @@ aiohttp==3.9.1
 pydantic==2.5.3
 pydantic-settings==2.1.0
 python-dotenv==1.0.0
-PyJWT==2.8.1
+PyJWT
 cryptography==41.0.7
 yandexcloud>=0.395.0

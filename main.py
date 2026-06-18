@@ -119,51 +119,53 @@ async def main():
     retry_count = 0
     retry_delay = 5  # секунды
     
-    while retry_count < max_retries:
-        try:
-            logger.info("Starting bot polling...")
-
-            # Ensure no webhook is set (prevents conflicts when switching between
-            # webhook and getUpdates) and give clear diagnostics if Telegram
-            # reports a concurrent getUpdates client.
+    try:
+        while retry_count < max_retries:
             try:
-                await bot.delete_webhook(drop_pending_updates=True)
-                logger.debug("Deleted existing webhook (if any)")
-            except Exception as ex:
-                logger.debug(f"Could not delete webhook (non-fatal): {ex}")
+                logger.info("Starting bot polling...")
 
-            await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
-            # Если успешно начали polling, сбросим счетчик
-            retry_count = 0
-            retry_delay = 5
-        except Exception as e:
-            # Если сервер сообщает о конфликте getUpdates — чаще всего значит,
-            # что уже запущен другой экземпляр бота. Выход с явным сообщением.
-            msg = str(e)
-            if "Conflict" in msg and "getUpdates" in msg:
-                logger.critical(
-                    "Telegram reports a getUpdates conflict. Make sure only one bot instance is running or remove other polling/webhook."
+                try:
+                    await bot.delete_webhook(drop_pending_updates=True)
+                    logger.debug("Deleted existing webhook (if any)")
+                except Exception as ex:
+                    logger.debug(f"Could not delete webhook (non-fatal): {ex}")
+
+                # ДОБАВИЛИ polling_timeout=20, чтобы сессии закрывались контролируемо
+                await dp.start_polling(
+                    bot, 
+                    allowed_updates=dp.resolve_used_update_types(),
+                    polling_timeout=20
                 )
-                # Завершаем без дальнейших попыток — конфликт требует вмешательства.
-                sys.exit(2)
-
-            retry_count += 1
-            logger.error(f"Error in main (attempt {retry_count}/{max_retries}): {e}")
-
-            if retry_count < max_retries:
-                logger.info(f"Retrying in {retry_delay} seconds...")
-                await asyncio.sleep(retry_delay)
-                # Экспоненциальная задержка между попытками
-                retry_delay = min(retry_delay * 2, 60)  # макс 60 секунд
-            else:
-                logger.critical("Max retries exceeded. Shutting down.")
-                raise
-        finally:
-            try:
-                await bot.session.close()
+                
+                retry_count = 0
+                retry_delay = 5
             except Exception as e:
-                logger.warning(f"Error closing bot session: {e}")
+                msg = str(e)
+                if "Conflict" in msg and "getUpdates" in msg:
+                    logger.critical(
+                        "Telegram reports a getUpdates conflict. Make sure only one bot instance is running."
+                    )
+                    sys.exit(2)
+
+                retry_count += 1
+                logger.error(f"Error in main (attempt {retry_count}/{max_retries}): {e}")
+
+                if retry_count < max_retries:
+                    logger.info(f"Retrying in {retry_delay} seconds...")
+                    await asyncio.sleep(retry_delay)
+                    retry_delay = min(retry_delay * 2, 60)
+                else:
+                    logger.critical("Max retries exceeded. Shutting down.")
+                    raise
+    finally:
+        # СЕССИЯ ЗАКРЫВАЕТСЯ ТУТ — ТОЛЬКО КОГДА ЦИКЛ WHILE ПОЛНОСТЬЮ ЗАВЕРШЕН
+        try:
+            await bot.session.close()
+            logger.info("Bot network session closed safely.")
+        except Exception as e:
+            logger.warning(f"Error closing bot session: {e}")
 
 
 if __name__ == "__main__":
+    import asyncio  # Убедись, что импорт asyncio есть в файле
     asyncio.run(main())
